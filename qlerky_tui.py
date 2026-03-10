@@ -234,10 +234,9 @@ class MailClient:
         self.status = "disconnected"
         self.error = ""
         self._lock = threading.Lock()
-        self._fetching = False  # FIX: track first-fetch in progress
+        self._fetching = False
 
     def _open(self) -> bool:
-        """Open a fresh SSL connection and login. Returns True on success."""
         import ssl as _ssl
 
         try:
@@ -271,11 +270,7 @@ class MailClient:
         self.status = "disconnected"
 
     def fetch_inbox(self, limit=30):
-        """Fetch headers. Reconnects automatically if connection dropped.
-        FIX: preserve existing body/codes on refresh so content panel
-        doesn't flash back to 'loading' every 15 seconds."""
         self._fetching = True
-        # try to reuse, or reconnect once
         if not self.conn:
             if not self._open():
                 self._fetching = False
@@ -298,7 +293,6 @@ class MailClient:
             ids = data[0].split()[-limit:][::-1]
             msgs = []
 
-            # FIX: build a lookup of already-fetched bodies keyed by uid
             with self._lock:
                 existing = {m["uid"]: m for m in self.messages}
 
@@ -322,7 +316,6 @@ class MailClient:
                 except Exception:
                     dts = date_str[:16]
 
-                # FIX: carry over body/codes if already loaded for this uid
                 prev = existing.get(uid, {})
                 msgs.append(
                     {
@@ -330,8 +323,8 @@ class MailClient:
                         "subject": subj,
                         "from": frm,
                         "date": dts,
-                        "body": prev.get("body", None),  # keep loaded body
-                        "codes": prev.get("codes", []),  # keep extracted codes
+                        "body": prev.get("body", None),
+                        "codes": prev.get("codes", []),
                     }
                 )
             with self._lock:
@@ -339,15 +332,13 @@ class MailClient:
             self.status = "connected"
         except Exception as e:
             self.error = str(e)[:120]
-            self.conn = None  # force reconnect next time
+            self.conn = None
         finally:
             self._fetching = False
 
     def fetch_body(self, idx: int):
-        """Fetch full RFC822 body on a SEPARATE connection (thread-safe)."""
         if idx >= len(self.messages):
             return
-        # guard against duplicate threads
         with self._lock:
             if self.messages[idx].get("body") == "__loading__":
                 return
@@ -383,7 +374,6 @@ class MailClient:
 
 # ── clipboard ─────────────────────────────────────────────────────────────────
 def clipboard(text: str) -> bool:
-    # Windows
     if platform.system() == "Windows":
         try:
             subprocess.run(
@@ -397,7 +387,6 @@ def clipboard(text: str) -> bool:
         except Exception:
             pass
         try:
-            # PowerShell fallback
             subprocess.run(
                 ["powershell", "-command", f"Set-Clipboard -Value '{text}'"],
                 check=True,
@@ -408,7 +397,6 @@ def clipboard(text: str) -> bool:
         except Exception:
             pass
         return False
-    # macOS / Linux
     for cmd in (
         ["pbcopy"],
         ["xclip", "-selection", "clipboard"],
@@ -751,7 +739,6 @@ class App:
 
     # ── dialogs ───────────────────────────────────────────────────────────────
     def dlg_accounts(self):
-        """Universal add/import dialog — handles single entry, bulk paste and file."""
         H, W = self.scr.getmaxyx()
         dh = min(H - 2, 28)
         dw = min(W - 2, 72)
@@ -763,7 +750,6 @@ class App:
             draw_box(w, 0, 0, dh, dw, title, active=True)
             return w
 
-        # ── main screen ───────────────────────────────────────────────────────
         win = _make_win("Add / Import Accounts")
         hints = [
             ("", "Enter one account, paste many, or load a file."),
@@ -806,18 +792,15 @@ class App:
         )
         win.refresh()
 
-        # ── collect lines ─────────────────────────────────────────────────────
         lines = []
         input_row = dh - 3
         while True:
-            # clear input row fully before each prompt
             _put(win, input_row, 2, " " * (dw - 4), 0)
             prompt = "> " if not lines else f"+{len(lines)} > "
             ln = dlg_prompt(win, input_row, 2, prompt, dw - len(prompt) - 4)
             if ln is None or ln == "":
                 break
             lines.append(ln)
-            # show confirmation one row above input, clipped cleanly
             confirm = f"  \u2713  {ln}"
             _put(
                 win,
@@ -835,35 +818,28 @@ class App:
         if not lines:
             return
 
-        # ── process collected input ───────────────────────────────────────────
         total_added = 0
         for raw in lines:
             raw = raw.strip()
             if not raw:
                 continue
 
-            # ── file path? ────────────────────────────────────────────────────
             p = Path(raw).expanduser()
             if p.exists() and p.is_file():
                 added = self._import_text(p.read_text())
                 total_added += added
                 continue
 
-            # ── JSON blob pasted directly? ────────────────────────────────────
             if raw.startswith("[") or raw.startswith("{"):
                 total_added += self._import_text(raw)
                 continue
 
-            # ── single line: auto-detect separator ───────────────────────────
             sep = self._detect_sep(raw)
             total_added += self._import_text(raw, sep)
 
         self.note(f"Added {total_added} account(s)")
 
     def _detect_sep(self, line: str) -> str:
-        """Guess separator from a single line. Prefer : then ; | TAB space."""
-        # if line has @ it's email — find first non-email char after the domain
-        # simplest: try each candidate and see if left part looks like an email
         for sep in (":", ";", "|", "\t", " "):
             parts = line.split(sep)
             if len(parts) >= 2 and "@" in parts[0]:
@@ -914,7 +890,6 @@ class App:
             ln = ln.strip()
             if not ln or ln.startswith("#"):
                 continue
-            # auto-detect separator per line if not forced
             s = sep if sep != ":" or ":" in ln else self._detect_sep(ln)
             parts = ln.split(s)
             if len(parts) < 2:
@@ -937,6 +912,8 @@ class App:
         self._save_acc()
         return added
 
+    # ── TOTP import dialog (was accidentally inside _import_text) ─────────────
+    def dlg_totp(self):
         H, W = self.scr.getmaxyx()
         dh, dw = 14, min(W - 4, 68)
         win = curses.newwin(dh, dw, (H - dh) // 2, (W - dw) // 2)
@@ -986,7 +963,6 @@ class App:
                 self.scr.refresh()
                 return
 
-            # pre-fill account email from currently selected/connected account
             prefill_email = ""
             if self.client:
                 prefill_email = self.client.acc.get("email", "")
@@ -994,7 +970,6 @@ class App:
                 prefill_email = self.accounts[self.ai].get("email", "")
 
             if prefill_email:
-                # show it, skip the prompt
                 _put(
                     win,
                     9,
@@ -1033,7 +1008,6 @@ class App:
         self.scr.refresh()
 
     def dlg_market(self):
-        """HiddenCode market — Telegram bot."""
         URL = "https://t.me/hcmarket_bot"
         DESC = [
             ("HC Market — by HiddenCode", C_TITLE),
@@ -1133,7 +1107,6 @@ class App:
         self.scr.refresh()
 
     def dlg_qlerky(self):
-        """Show Qlerky app promo dialog with QR code."""
         URL = "https://play.google.com/store/apps/details?id=com.hiddenflame.qlerkypassword"
         DESC = [
             "Qlerky — Offline Password Manager",
@@ -1144,7 +1117,6 @@ class App:
         ]
 
         def _make_qr(data: str):
-            """Generate QR matrix using qrcode lib if available, else None."""
             try:
                 import qrcode as _q
 
@@ -1154,7 +1126,6 @@ class App:
                 return qr.get_matrix()
             except ImportError:
                 pass
-            # Fallback: try segno
             try:
                 import io
 
@@ -1201,7 +1172,6 @@ class App:
             row += 1
 
         if matrix:
-            # half-block rendering: two QR rows → one terminal row
             qx = max(1, (dw - qr_cols) // 2)
             for pair in range((len(matrix) + 1) // 2):
                 ry = row + pair
@@ -1218,7 +1188,6 @@ class App:
                     s += "█" if t and b else ("▀" if t else ("▄" if b else " "))
                 _put(win, ry, qx, s[: dw - 2], curses.color_pair(C_HDR))
         else:
-            # no qrcode lib — show URL in a box so user can copy it
             _put(
                 win,
                 row,
@@ -1227,7 +1196,6 @@ class App:
                 curses.color_pair(C_WARN),
             )
             _put(win, row + 1, 2, "URL:", curses.color_pair(C_DIM))
-            # wrap URL across lines
             url_parts = [URL[i : i + dw - 6] for i in range(0, len(URL), dw - 6)]
             for j, part in enumerate(url_parts[:3]):
                 if row + 2 + j < dh - 2:
@@ -1260,7 +1228,6 @@ class App:
         right_w = W - left_w
 
         has_totp = len(self.totp_list) > 0
-        # top border + column header + N entries + bottom border = N+3, min 5
         totp_h = min(max(5, H * 30 // 100), len(self.totp_list) + 4) if has_totp else 3
         bot_h = H - totp_h
 
@@ -1302,7 +1269,7 @@ class App:
         if self._help:
             self._draw_help(H, W)
 
-    # ── account list ─────────────────────────────────────────────────────────
+    # ── account list ──────────────────────────────────────────────────────────
     def _draw_acc(self, y, x, h, w):
         act = self.focus == self.FA
         draw_box(
@@ -1362,7 +1329,7 @@ class App:
             if hx > x + len(cnt) + 4:
                 _put(self.scr, y + h - 1, hx, hints, curses.color_pair(C_DIM))
 
-    # ── TOTP panel ───────────────────────────────────────────────────────────
+    # ── TOTP panel ────────────────────────────────────────────────────────────
     def _draw_totp(self, y, x, h, w):
         act = self.focus == self.FT
         sec = totp_left()
@@ -1380,8 +1347,6 @@ class App:
             if act
             else [("p", "get app"), ("m", "market")],
         )
-        # Draw timer right after the title word "totp"
-        # draw_box writes: ╭─totp (active: ╭─*totp), so totp ends at x+1+1+4=x+6 (or x+7 active)
         timer_x = x + (8 if act else 7)
         _put(
             self.scr, y, timer_x, f"{sec:2d}s─", curses.color_pair(col) | curses.A_BOLD
@@ -1410,7 +1375,6 @@ class App:
         _put(self.scr, y + 1, cl, "Service", ha)
         _put(self.scr, y + 1, cw2, "current", ha)
         _put(self.scr, y + 1, cnw, "next", ha)
-        # copy hints on the right of the header row
         hint_y = y + 1
         hint_x = x + w - 18
         if hint_x > cnv + 6:
@@ -1458,7 +1422,6 @@ class App:
                     self.scr, ry, cnv, nxt, curses.color_pair(C_DIM) if not sel else ba
                 )
 
-        # hint on bottom border
         hint = "┤y:copy current  Y:copy next├"
         bx = x + w - len(hint) - 1
         if bx > x + 4:
@@ -1503,7 +1466,6 @@ class App:
 
         msgs = c.messages
 
-        # FIX: show "Loading inbox…" while first fetch is in progress
         if not msgs:
             if c._fetching:
                 _put(
@@ -1604,13 +1566,12 @@ class App:
                     break
                 _put(self.scr, ry, x + 2, ln[: iw - 2], curses.color_pair(C_DIM))
 
-    # ── help overlay ─────────────────────────────────────────────────────────
+    # ── help overlay ──────────────────────────────────────────────────────────
     def _draw_help(self, H, W):
         dh, dw = 28, 56
         dy, dx = (H - dh) // 2, (W - dw) // 2
         if dy < 0 or dx < 0:
             return
-        # create once, reuse on subsequent frames
         if not hasattr(self, "_help_win") or self._help_win is None:
             self._help_win = curses.newwin(dh, dw, dy, dx)
             win = self._help_win
@@ -1657,7 +1618,6 @@ class App:
             self.scr.refresh()
 
     # ── input ─────────────────────────────────────────────────────────────────
-    # Cyrillic layout (ЙЦУКЕН) → Latin equivalents for all hotkeys
     _CYR = {
         ord("й"): ord("q"),
         ord("Й"): ord("Q"),
@@ -1714,12 +1674,11 @@ class App:
     }
 
     def handle(self, ch):
-        # Transparently remap Cyrillic to Latin so hotkeys work in any layout
         ch = self._CYR.get(ch, ch)
         if ch == ord("?"):
             now = time.time()
             last = getattr(self, "_help_toggled_at", 0)
-            if now - last < 0.3:  # debounce: ignore rapid re-trigger
+            if now - last < 0.3:
                 return
             self._help_toggled_at = now
             self._help = not self._help
@@ -1727,10 +1686,10 @@ class App:
                 self._close_help()
             return
         if self._help:
-            if ch in (27, 10, 13):  # ESC or Enter also closes
+            if ch in (27, 10, 13):
                 self._help = False
                 self._close_help()
-            return  # all other keys ignored while help is open
+            return
 
         if self.searching:
             if ch in (10, 13, 27):
@@ -1870,9 +1829,7 @@ class App:
                     break
                 if ch == -1:
                     continue
-                # flush any extra queued events (e.g. key repeat) before handling
                 if ch == ord("?") and not self._help:
-                    # drain remaining chars so we don't immediately re-close
                     self.scr.nodelay(True)
                     while self.scr.getch() != -1:
                         pass
