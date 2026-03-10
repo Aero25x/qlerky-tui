@@ -128,7 +128,7 @@ JSON file or direct paste:
 
 ## Built by
 
-[HiddenCode](https://t.me/hcmarket_bot) — privacy-first tools for people who value their data.
+[HiddenCode](https://t.me/hidden_coding) — privacy-first tools for people who value their data.
 
 ---
 ---
@@ -252,7 +252,7 @@ JSON-файл или прямая вставка:
 
 ## Создано
 
-[HiddenCode](https://t.me/hcmarket_bot) — инструменты с приоритетом приватности для людей, которые ценят свои данные.
+[HiddenCode](https://t.me/hidden_coding) — инструменты с приоритетом приватности для людей, которые ценят свои данные.
 
 
 [![Join our Telegram RU](https://img.shields.io/badge/Telegram-RU-03A500?style=for-the-badge&logo=telegram&logoColor=white&labelColor=blue&color=red)](https://t.me/hidden_coding)
