@@ -87,6 +87,8 @@ you@outlook.com:yourpassword
 /home/user/accounts.txt
 ```
 
+
+
 **Supported formats:**
 
 Line format (separator auto-detected: `:` `;` `|` TAB space):
@@ -119,11 +121,7 @@ JSON file or direct paste:
 
 ---
 
-## Built by
 
-[HiddenCode](https://t.me/hidden_coding) — privacy-first tools for people who value their data.
-
----
 ---
 
 # qlerky_tui
@@ -240,4 +238,7 @@ JSON-файл или прямая вставка:
 | **Яндекс** | Сначала включи IMAP в настройках почты |
 
 > Пароли хранятся в открытом виде в `~/.config/qlerky_tui/accounts.json`. Защити свою домашнюю директорию соответствующим образом.
+
+<img width="1448" height="1086" alt="image" src="https://github.com/user-attachments/assets/bdbb6db0-d4c3-40c1-9b8f-57fa3e0d95de" />
+
 
